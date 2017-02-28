@@ -5,6 +5,8 @@ const asnyc = require('async');
 
 const fs = require('fs');
 const readline = require('readline');
+const https = require('https');
+const querystring = require('querystring');
 
 class Calendar {
 
@@ -20,6 +22,8 @@ class Calendar {
 
     this.api = google.calendar('v3');
     this.clientSecretPath = clientSecretPath;
+
+    this.HOST = 'www.googleapis.com';
   }
 
   // AUTHENTICATION
@@ -321,6 +325,82 @@ class Calendar {
         });
     });
   }
+
+  createEvents(calendarId, events) {
+    debug('Starting createEvents');
+    const authPromise = this.getAuth();
+
+    return new Promise((resolve, reject) => {
+      authPromise
+        .then((auth) => {
+          debug('createEvents auth successful');
+
+          const boundary = 'batch_events';
+          const requestOptions = {
+            hostname: this.HOST,
+            path: '/batch',
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${auth.credentials.access_token}`,
+              'Content-Type': `multipart/mixed; boundary=${boundary}`,
+              'Content-Length': events.length,
+            },
+          };
+
+          const postData = querystring.stringify(events);
+          console.log(postData);
+          
+
+          const req = https.request(requestOptions, (res) => {
+            debug('https.request response callback');
+
+            res.on('data', (data) => {
+              debug('Response data event');
+              resolve(data);
+            });
+          });
+
+          req.write(postData);
+
+          req.on('error', (err) => {
+            debug('https.request error event');
+            debug(err);
+            reject(err);
+          });
+
+          debug('req.end()');
+          req.end();
+        })
+        .catch((err) => {
+          debug('createEvents auth error');
+          debug(err);
+          return reject(err);
+        });
+    });
+  }
 }
 
 module.exports = Calendar;
+
+(function () {
+  const cal = new Calendar('./client_secret.json');
+
+  cal.findOrCreateCalendar('foo')
+    .then((calendar) => {
+      cal.createEvents(calendar.id, [
+        {
+          name: 'foo',
+        },
+        {
+          name: 'bar',
+        }
+      ])
+        .then((response) => {
+          console.log(response.toString());
+        });
+    })
+    .catch((err) => {
+      console.log(err);
+    })
+
+}());
